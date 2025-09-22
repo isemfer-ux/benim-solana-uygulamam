@@ -51,31 +51,23 @@ export default function Home() {
     `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
   );
 
-  // SOL bakiyesini çeken fonksiyon
-  const fetchSolBalance = useCallback(async () => {
+  // Tüm verileri tek bir fonksiyonda çeken ve işleyen metod
+  const fetchData = useCallback(async () => {
     if (!publicKey) {
       setSolBalance(null);
-      return;
-    }
-    try {
-      const accountBalance = await connection.getBalance(publicKey);
-      setSolBalance(accountBalance / LAMPORTS_PER_SOL);
-    } catch (error) {
-      console.error(
-        "SOL bakiyesi alınamadı " + publicKey + ": " + error
-      );
-      setSolBalance(null);
-    }
-  }, [publicKey, connection]);
-
-  // SPL tokenlarını ve metadata'sını çeken fonksiyon
-  const fetchSplTokens = useCallback(async () => {
-    if (!publicKey) {
       setSplTokens([]);
+      setTotalWalletValue(null);
       return;
     }
+
     setLoading(true);
     try {
+      // 1. SOL Bakiyesini Çek
+      const solAccountBalance = await connection.getBalance(publicKey);
+      const sol = solAccountBalance / LAMPORTS_PER_SOL;
+      setSolBalance(sol);
+
+      // 2. SPL Token Bakiyelerini Çek
       const filters: GetProgramAccountsFilter[] = [
         { dataSize: 165 },
         { memcmp: { offset: 32, bytes: publicKey.toBase58() } },
@@ -97,7 +89,8 @@ export default function Home() {
       const nonZeroTokens = tokensWithoutMetadata.filter(token => token.amount > 0);
       const mintAddresses = nonZeroTokens.map(token => token.mintAddress);
       
-      const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
+      // 3. Token Metadata'sını (isim, sembol, ikon) Çek
+      const metadataResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -108,8 +101,8 @@ export default function Home() {
         }),
       });
 
-      const data = await response.json();
-      const assets: HeliusAsset[] = data.result;
+      const metadataData = await metadataResponse.json();
+      const assets: HeliusAsset[] = metadataData.result;
 
       const tokensWithMetadata = nonZeroTokens.map((token) => {
         const asset = assets.find((a: HeliusAsset) => a.id === token.mintAddress);
@@ -120,69 +113,43 @@ export default function Home() {
           icon: asset?.content?.links?.image || null,
         };
       });
-      setSplTokens(tokensWithMetadata);
-    } catch (error) {
-      console.error(
-        "SPL bakiyeleri alınamadı " + publicKey.toBase58() + ": " + error
-      );
-      setSplTokens([]);
-    }
-    setLoading(false);
-  }, [publicKey, connection]);
 
-  // Fiyatları çeken ve toplam değeri hesaplayan fonksiyon
-  const fetchPricesAndCalculateTotal = useCallback(async () => {
-    if (splTokens.length === 0 && solBalance === null) return;
-    
-    const allMintAddresses = ["So11111111111111111111111111111111111111112"];
-    splTokens.forEach(token => {
-      if (token.mintAddress) {
-        allMintAddresses.push(token.mintAddress);
-      }
-    });
-
-    try {
-      const response = await fetch(
+      // 4. Fiyatlandırma API'sinden Fiyatları Çek
+      const allMintAddresses = ["So11111111111111111111111111111111111111112", ...mintAddresses];
+      const priceResponse = await fetch(
         `https://price.jup.ag/v4/price?ids=${allMintAddresses.join('%2C')}`
       );
-      const data = await response.json();
-      const prices = data.data;
+      const priceData = await priceResponse.json();
+      const prices = priceData.data;
 
+      // 5. Toplam Değeri Hesapla ve Token'lara Fiyatları Ekle
       let totalValue = 0;
-
       const solPrice = prices["So11111111111111111111111111111111111111112"]?.price || 0;
-      if (solBalance !== null) {
-        totalValue += solBalance * solPrice;
-      }
+      totalValue += sol * solPrice;
 
-      const updatedSplTokens = splTokens.map(token => {
+      const updatedSplTokens = tokensWithMetadata.map(token => {
         const price = prices[token.mintAddress]?.price || 0;
         totalValue += token.amount * price;
         return { ...token, price };
       });
 
+      // 6. Durumları Tek Seferde Güncelle
       setSplTokens(updatedSplTokens);
       setTotalWalletValue(totalValue);
+
     } catch (error) {
-      console.error("Fiyatlar alınamadı: ", error);
+      console.error("Veriler alınırken bir hata oluştu: ", error);
+      setSolBalance(null);
+      setSplTokens([]);
       setTotalWalletValue(null);
     }
-  }, [splTokens, solBalance]);
+    setLoading(false);
+  }, [publicKey, connection]);
 
-  // Cüzdan bağlandığında SOL ve SPL verilerini çek
+  // Cüzdan bağlandığında verileri otomatik olarak çek
   useEffect(() => {
-    if (publicKey) {
-      fetchSolBalance();
-      fetchSplTokens();
-    }
-  }, [publicKey, fetchSolBalance, fetchSplTokens]);
-
-  // SOL ve SPL verileri geldiğinde fiyatları çek
-  useEffect(() => {
-    if ((splTokens.length > 0 || solBalance !== null) && !loading) {
-      fetchPricesAndCalculateTotal();
-    }
-  }, [solBalance, splTokens, loading, fetchPricesAndCalculateTotal]);
+    fetchData();
+  }, [fetchData]);
 
 
   return (
@@ -235,10 +202,7 @@ export default function Home() {
 
             <div className="mt-6 text-center">
               <button
-                onClick={() => {
-                  fetchSolBalance();
-                  fetchSplTokens();
-                }}
+                onClick={fetchData}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
                 disabled={loading}
               >
