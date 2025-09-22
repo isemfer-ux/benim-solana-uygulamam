@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
@@ -13,7 +13,7 @@ const WalletBalance: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Bakiyeyi getiren asenkron fonksiyon
-  const fetchBalance = async () => {
+  const fetchBalance = useCallback(async () => {
     if (!publicKey) {
       setBalance(null);
       return;
@@ -31,12 +31,12 @@ const WalletBalance: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [publicKey, connection]);
 
   // Cüzdan bağlandığında veya değiştiğinde otomatik olarak bakiyeyi getir.
   useEffect(() => {
     fetchBalance();
-  }, [publicKey, connection]);
+  }, [fetchBalance]);
 
   // Sayfada görüntülenecek kısım
   return (

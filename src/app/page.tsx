@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Connection,
   PublicKey,
@@ -29,7 +29,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [splLoading, setSplLoading] = useState(false);
 
-  const fetchSolBalance = async () => {
+  const fetchSolBalance = useCallback(async () => {
     if (!publicKey) {
       setSolBalance(null);
       return;
@@ -50,9 +50,9 @@ export default function Home() {
       setSolBalance(null);
     }
     setLoading(false);
-  };
+  }, [publicKey]);
 
-  const fetchSplTokens = async () => {
+  const fetchSplTokens = useCallback(async () => {
     if (!publicKey) {
       setSplTokens([]);
       return;
@@ -97,13 +97,13 @@ export default function Home() {
       setSplTokens([]);
     }
     setSplLoading(false);
-  };
+  }, [publicKey]);
 
   useEffect(() => {
     if (publicKey) {
       fetchSolBalance();
     }
-  }, [publicKey]);
+  }, [fetchSolBalance, publicKey]);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-900 text-white">
@@ -148,11 +148,11 @@ export default function Home() {
               
               <div className="mt-4 text-left">
                 {splLoading ? (
-                  <p className="text-white text-center">SPL token'lar yükleniyor...</p>
+                  <p className="text-white text-center">SPL token&apos;lar yükleniyor...</p>
                 ) : (
                   splTokens.length > 0 ? (
                     <div className="mt-4">
-                      <h3 className="text-xl font-semibold mb-2">SPL Token'lar:</h3>
+                      <h3 className="text-xl font-semibold mb-2">SPL Token&apos;lar:</h3>
                       <ul className="list-disc list-inside space-y-2">
                         {splTokens.map((token, index) => (
                           <li key={index} className="bg-slate-700 p-2 rounded">
