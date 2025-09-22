@@ -154,17 +154,19 @@ export default function Home() {
                     <div className="mt-4">
                       <h3 className="text-xl font-semibold mb-2">SPL Token&apos;lar:</h3>
                       <ul className="list-disc list-inside space-y-2">
-                        {splTokens.map((token, index) => (
-                          <li key={index} className="bg-slate-700 p-2 rounded">
-                            <span className="font-mono text-sm text-gray-400">
-                              Mint Adresi: {token.mintAddress}
-                            </span>
-                            <br />
-                            <span className="font-bold text-lg text-purple-400">
-                              Miktar: {token.amount}
-                            </span>
-                          </li>
-                        ))}
+                        {splTokens
+                          .filter(token => token.amount > 0) // Burada filtreleme yapılıyor
+                          .map((token, index) => (
+                            <li key={index} className="bg-slate-700 p-2 rounded">
+                              <span className="font-mono text-sm text-gray-400">
+                                Mint Adresi: {token.mintAddress}
+                              </span>
+                              <br />
+                              <span className="font-bold text-lg text-purple-400">
+                                Miktar: {token.amount}
+                              </span>
+                            </li>
+                          ))}
                       </ul>
                     </div>
                   ) : (
