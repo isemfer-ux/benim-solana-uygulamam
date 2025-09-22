@@ -3,12 +3,13 @@
 import dynamic from "next/dynamic";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useEffect, useState } from "react";
-import { Connection, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
-
-// Cüzdan butonunun stil dosyasını içeri aktarıyoruz.
+import {
+  Connection,
+  PublicKey,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-// WalletMultiButton'u dinamik olarak import ediyoruz
 const WalletMultiButtonDynamic = dynamic(
   async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
   { ssr: false }
@@ -16,74 +17,74 @@ const WalletMultiButtonDynamic = dynamic(
 
 export default function Home() {
   const { publicKey } = useWallet();
-  const [balance, setBalance] = useState<number | null>(null);
+  const [solBalance, setSolBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchBalance = async () => {
-    if (!publicKey) return;
+  const fetchSolBalance = async () => {
+    if (!publicKey) {
+      setSolBalance(null);
+      return;
+    }
+
     setLoading(true);
     try {
-      // Helius'un RPC endpoint'ini doğru API anahtarınızla kullanıyoruz.
-      // Lütfen "YOUR_HELIUS_API_KEY" yerine kendi Helius anahtarınızı yazın.
       const heliusApiKey = "8e2fd160-d29c-452f-bfd5-507192363a1f";
       const connection = new Connection(
         `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
       );
       const accountBalance = await connection.getBalance(publicKey);
-      setBalance(accountBalance / LAMPORTS_PER_SOL);
+      setSolBalance(accountBalance / LAMPORTS_PER_SOL);
     } catch (error) {
       console.error(
-        "failed to get balance of account " + publicKey + ": " + error
+        "failed to get SOL balance for account " + publicKey + ": " + error
       );
-      setBalance(null);
+      setSolBalance(null);
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchBalance();
+    if (publicKey) {
+      fetchSolBalance();
+    }
   }, [publicKey]);
 
-return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-900 text-white">
       <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex flex-col space-y-4">
         <h1 className="text-4xl font-bold mb-4">Solana Cüzdan Bağlama</h1>
-        <p className="text-lg">Cüzdanınızı bağlayarak SOL bakiyenizi görün.</p>
+        <p className="text-lg text-center">
+          Cüzdanınızı bağlayarak SOL bakiyenizi görün.
+        </p>
 
-        {/* Cüzdan Bağlama Butonu */}
-        <div className="p-4 bg-slate-800 rounded-xl shadow-lg">
+        <div className="p-4 bg-slate-800 rounded-xl shadow-lg mt-4">
           <WalletMultiButtonDynamic />
         </div>
 
-        {/* Bağlıysa Bakiyeyi Göster */}
         {publicKey ? (
-          <div className="p-4 bg-slate-800 rounded-xl shadow-lg mt-4 w-full text-center">
+          <div className="p-6 bg-slate-800 rounded-xl shadow-lg mt-4 w-full text-center">
             <p className="text-lg text-white">
               Bağlı Cüzdan:{" "}
               <span className="font-semibold text-green-400">
                 {publicKey.toBase58()}
               </span>
             </p>
-            {loading ? (
-              <p className="text-white mt-2">Bakiye yükleniyor...</p>
-            ) : (
-              <p className="text-lg text-white mt-2">
-                Bakiyeniz:{" "}
-                <span className="font-semibold text-green-400">
-                  {balance !== null ? `${balance} SOL` : "Bakiye alınamadı"}
-                </span>
-              </p>
-            )}
-            <button
-              onClick={fetchBalance}
-              className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
-              disabled={loading}
-            >
-              {loading ? "Yenileniyor..." : "Bakiyeyi Yenile"}
-            </button>
+            <div className="mt-6 text-left">
+              <h2 className="text-2xl font-bold mb-2 text-center">Bakiyeniz</h2>
+              {loading ? (
+                <p className="text-white text-center">Bakiye yükleniyor...</p>
+              ) : (
+                <p className="text-lg text-center">
+                  <span className="font-semibold text-green-400">SOL:</span>{" "}
+                  {solBalance !== null ? `${solBalance}` : "Bakiye alınamadı"}
+                </p>
+              )}
+            </div>
           </div>
         ) : (
-          <p className="text-white mt-4">Lütfen bir cüzdan bağlayın.</p>
+          <p className="text-white mt-4 text-center">
+            Lütfen bir cüzdan bağlayın.
+          </p>
         )}
       </div>
     </main>
