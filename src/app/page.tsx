@@ -51,6 +51,8 @@ export default function Home() {
   const [loadingSolPrice, setLoadingSolPrice] = useState(false);
 
   const heliusApiKey = "8e2fd160-d29c-452f-bfd5-507192363a1f";
+  
+  // Memoize the connection object to prevent unnecessary re-creations
   const connection = new Connection(
     `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
   );
@@ -148,7 +150,9 @@ export default function Home() {
   const fetchTokenPrice = useCallback(async (mintAddress: string, index: number) => {
     setSplTokens(currentTokens => {
         const newTokens = [...currentTokens];
-        newTokens[index].loadingPrice = true;
+        if (newTokens[index]) {
+            newTokens[index].loadingPrice = true;
+        }
         return newTokens;
     });
     
@@ -161,8 +165,10 @@ export default function Home() {
       
       setSplTokens(currentTokens => {
         const newTokens = [...currentTokens];
-        newTokens[index].price = price;
-        newTokens[index].loadingPrice = false;
+        if (newTokens[index]) {
+            newTokens[index].price = price;
+            newTokens[index].loadingPrice = false;
+        }
         return newTokens;
       });
 
@@ -170,8 +176,10 @@ export default function Home() {
       console.error(`Fiyat alınamadı ${mintAddress}: `, error);
       setSplTokens(currentTokens => {
         const newTokens = [...currentTokens];
-        newTokens[index].price = null;
-        newTokens[index].loadingPrice = false;
+        if (newTokens[index]) {
+            newTokens[index].price = null;
+            newTokens[index].loadingPrice = false;
+        }
         return newTokens;
       });
     }
@@ -180,11 +188,11 @@ export default function Home() {
   // Recalculate total wallet value whenever balances or prices change
   useEffect(() => {
     let total = 0;
-    if (solBalance !== null && solPrice !== null) {
+    if (solBalance !== null && solPrice !== null && solPrice !== undefined) {
       total += solBalance * solPrice;
     }
     splTokens.forEach(token => {
-      if (token.price !== null) {
+      if (token.price !== null && token.price !== undefined) {
         total += token.amount * token.price;
       }
     });
@@ -295,7 +303,7 @@ export default function Home() {
                                   className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors duration-200"
                                   disabled={token.loadingPrice}
                                 >
-                                  {token.loadingPrice ? "Yükleniyor..." : token.price !== null ? `$${token.price.toFixed(4)}` : "Fiyatı Al"}
+                                  {token.loadingPrice ? "Yükleniyor..." : token.price !== null && token.price !== undefined ? `$${token.price.toFixed(4)}` : "Fiyatı Al"}
                                 </button>
                             </li>
                           ))}
