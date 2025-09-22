@@ -20,9 +20,9 @@ const WalletMultiButtonDynamic = dynamic(
 interface TokenBalance {
   mintAddress: string;
   amount: number;
-  name?: string;
-  symbol?: string;
-  icon?: string;
+  name?: string | null;
+  symbol?: string | null;
+  icon?: string | null;
 }
 
 // Helius Digital Assets API'sinden gelen veri için yeni interface
