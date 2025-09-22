@@ -57,7 +57,6 @@ export default function Home() {
       setSolBalance(null);
       return;
     }
-
     try {
       const accountBalance = await connection.getBalance(publicKey);
       setSolBalance(accountBalance / LAMPORTS_PER_SOL);
@@ -69,17 +68,14 @@ export default function Home() {
     }
   }, [publicKey, connection]);
 
-  // SPL tokenlarını ve fiyatlarını tek seferde çeken fonksiyon
-  const fetchSplTokensAndPrices = useCallback(async () => {
+  // SPL tokenlarını ve metadata'sını çeken fonksiyon
+  const fetchSplTokens = useCallback(async () => {
     if (!publicKey) {
       setSplTokens([]);
-      setTotalWalletValue(null);
       return;
     }
-
     setLoading(true);
     try {
-      // 1. SPL Token bakiyelerini al
       const filters: GetProgramAccountsFilter[] = [
         { dataSize: 165 },
         { memcmp: { offset: 32, bytes: publicKey.toBase58() } },
@@ -100,8 +96,7 @@ export default function Home() {
 
       const nonZeroTokens = tokensWithoutMetadata.filter(token => token.amount > 0);
       const mintAddresses = nonZeroTokens.map(token => token.mintAddress);
-
-      // 2. Token metadata'sını (isim, sembol, ikon) al
+      
       const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -125,48 +120,69 @@ export default function Home() {
           icon: asset?.content?.links?.image || null,
         };
       });
+      setSplTokens(tokensWithMetadata);
+    } catch (error) {
+      console.error(
+        "SPL bakiyeleri alınamadı " + publicKey.toBase58() + ": " + error
+      );
+      setSplTokens([]);
+    }
+    setLoading(false);
+  }, [publicKey, connection]);
 
-      // 3. Fiyatlandırma API'sinden fiyatları al
-      const allMintAddresses = ["So11111111111111111111111111111111111111112", ...mintAddresses];
-      const priceResponse = await fetch(
+  // Fiyatları çeken ve toplam değeri hesaplayan fonksiyon
+  const fetchPricesAndCalculateTotal = useCallback(async () => {
+    if (splTokens.length === 0 && solBalance === null) return;
+    
+    const allMintAddresses = ["So11111111111111111111111111111111111111112"];
+    splTokens.forEach(token => {
+      if (token.mintAddress) {
+        allMintAddresses.push(token.mintAddress);
+      }
+    });
+
+    try {
+      const response = await fetch(
         `https://price.jup.ag/v4/price?ids=${allMintAddresses.join('%2C')}`
       );
-      const priceData = await priceResponse.json();
-      const prices = priceData.data;
+      const data = await response.json();
+      const prices = data.data;
 
-      // 4. Toplam değeri hesapla ve token'lara fiyatları ekle
       let totalValue = 0;
+
       const solPrice = prices["So11111111111111111111111111111111111111112"]?.price || 0;
       if (solBalance !== null) {
         totalValue += solBalance * solPrice;
       }
 
-      const updatedSplTokens = tokensWithMetadata.map(token => {
+      const updatedSplTokens = splTokens.map(token => {
         const price = prices[token.mintAddress]?.price || 0;
         totalValue += token.amount * price;
         return { ...token, price };
       });
 
-      // 5. Durumları tek seferde güncelle
       setSplTokens(updatedSplTokens);
       setTotalWalletValue(totalValue);
     } catch (error) {
-      console.error(
-        "SPL token ve fiyatları alınamadı " + publicKey.toBase58() + ": " + error
-      );
-      setSplTokens([]);
+      console.error("Fiyatlar alınamadı: ", error);
       setTotalWalletValue(null);
     }
-    setLoading(false);
-  }, [publicKey, connection, solBalance]);
+  }, [splTokens, solBalance]);
 
-  // Cüzdan bağlandığında veya anahtar değiştiğinde verileri çek
+  // Cüzdan bağlandığında SOL ve SPL verilerini çek
   useEffect(() => {
     if (publicKey) {
       fetchSolBalance();
-      fetchSplTokensAndPrices();
+      fetchSplTokens();
     }
-  }, [publicKey, fetchSolBalance, fetchSplTokensAndPrices]);
+  }, [publicKey, fetchSolBalance, fetchSplTokens]);
+
+  // SOL ve SPL verileri geldiğinde fiyatları çek
+  useEffect(() => {
+    if ((splTokens.length > 0 || solBalance !== null) && !loading) {
+      fetchPricesAndCalculateTotal();
+    }
+  }, [solBalance, splTokens, loading, fetchPricesAndCalculateTotal]);
 
 
   return (
@@ -219,11 +235,14 @@ export default function Home() {
 
             <div className="mt-6 text-center">
               <button
-                onClick={fetchSplTokensAndPrices}
+                onClick={() => {
+                  fetchSolBalance();
+                  fetchSplTokens();
+                }}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
                 disabled={loading}
               >
-                {loading ? "Yükleniyor..." : "SPL Token'ları Yenile"}
+                {loading ? "Yükleniyor..." : "Yenile"}
               </button>
               
               <div className="mt-4 text-left">
