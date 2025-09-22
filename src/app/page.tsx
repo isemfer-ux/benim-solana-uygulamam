@@ -20,6 +20,9 @@ const WalletMultiButtonDynamic = dynamic(
 interface TokenBalance {
   mintAddress: string;
   amount: number;
+  name?: string;
+  symbol?: string;
+  icon?: string;
 }
 
 export default function Home() {
@@ -82,14 +85,54 @@ export default function Home() {
         { filters: filters }
       );
 
-      const tokens = tokenAccounts.map((account) => {
+      const tokensWithoutMetadata = tokenAccounts.map((account) => {
         const parsedAccount = account.account.data as ParsedAccountData;
         return {
           mintAddress: parsedAccount.parsed.info.mint,
           amount: parsedAccount.parsed.info.tokenAmount.uiAmount,
         };
       });
-      setSplTokens(tokens);
+
+      // Filter out tokens with 0 balance
+      const nonZeroTokens = tokensWithoutMetadata.filter(token => token.amount > 0);
+
+      // Fetch metadata for all non-zero tokens in one go
+      const mintAddresses = nonZeroTokens.map(token => token.mintAddress);
+      const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "my-id",
+          method: "getMultipleAccounts",
+          params: [
+            mintAddresses,
+            {
+              "encoding": "jsonParsed"
+            }
+          ]
+        }),
+      });
+      const data = await response.json();
+      const mintData = data.result.value;
+
+      const tokensWithMetadata = nonZeroTokens.map((token, index) => {
+        const metadata = mintData[index]?.data?.parsed?.info?.mint;
+        const name = metadata?.name || null;
+        const symbol = metadata?.symbol || null;
+        const icon = metadata?.icon || null;
+
+        return {
+          ...token,
+          name: name,
+          symbol: symbol,
+          icon: icon,
+        };
+      });
+
+      setSplTokens(tokensWithMetadata);
     } catch (error) {
       console.error(
         "failed to get SPL balances for account " + publicKey.toBase58() + ": " + error
@@ -104,6 +147,13 @@ export default function Home() {
       fetchSolBalance();
     }
   }, [fetchSolBalance, publicKey]);
+  
+  // NOTE: This effect is for fetching SPL tokens only after the wallet is connected
+  useEffect(() => {
+    if (publicKey) {
+      fetchSplTokens();
+    }
+  }, [fetchSplTokens, publicKey]);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-900 text-white">
@@ -153,18 +203,32 @@ export default function Home() {
                   splTokens.length > 0 ? (
                     <div className="mt-4">
                       <h3 className="text-xl font-semibold mb-2">SPL Token&apos;lar:</h3>
-                      <ul className="list-disc list-inside space-y-2">
+                      <ul className="list-none space-y-4">
                         {splTokens
-                          .filter(token => token.amount > 0) // Burada filtreleme yapılıyor
+                          .filter(token => token.amount > 0)
                           .map((token, index) => (
-                            <li key={index} className="bg-slate-700 p-2 rounded">
-                              <span className="font-mono text-sm text-gray-400">
-                                Mint Adresi: {token.mintAddress}
-                              </span>
-                              <br />
-                              <span className="font-bold text-lg text-purple-400">
-                                Miktar: {token.amount}
-                              </span>
+                            <li key={index} className="bg-slate-700 p-4 rounded-xl flex items-center space-x-4">
+                                {token.icon ? (
+                                    <img src={token.icon} alt={`${token.name} icon`} className="w-12 h-12 rounded-full border-2 border-gray-600" />
+                                ) : (
+                                    <div className="w-12 h-12 bg-gray-500 rounded-full flex items-center justify-center text-gray-300">?</div>
+                                )}
+                                <div className="flex-1">
+                                    <h4 className="text-xl font-bold text-white">
+                                        {token.name || "Bilinmeyen Token"} 
+                                        {token.symbol && (
+                                          <span className="ml-2 text-sm text-gray-400 font-normal">
+                                            ({token.symbol})
+                                          </span>
+                                        )}
+                                    </h4>
+                                    <p className="font-bold text-lg text-purple-400">
+                                      {token.amount}
+                                    </p>
+                                    <p className="font-mono text-xs text-gray-400 mt-1">
+                                      Mint: {token.mintAddress}
+                                    </p>
+                                </div>
                             </li>
                           ))}
                       </ul>
