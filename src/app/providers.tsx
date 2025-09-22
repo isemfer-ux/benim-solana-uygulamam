@@ -13,13 +13,13 @@ import {
 import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 
-const heliusApiKey = "8e2fd160-d29c-452f-bfd5-507192363a1f";
+const heliusApiKey = "YOUR_HELIUS_API_KEY";
 
 const Providers = ({ children }: { children: React.ReactNode }) => {
   const network = WalletAdapterNetwork.Mainnet;
   const endpoint = useMemo(
     () => `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-    [heliusApiKey, network]
+    []
   );
 
   const wallets = useMemo(

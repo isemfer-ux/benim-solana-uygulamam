@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import Image from "next/image";
 import {
   Connection,
   PublicKey,
@@ -48,8 +49,9 @@ export default function Home() {
   const heliusApiKey = "8e2fd160-d29c-452f-bfd5-507192363a1f";
   
   // Memoize the connection object to prevent unnecessary re-creations
-  const connection = new Connection(
-    `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
+  const connection = useMemo(
+    () => new Connection(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`),
+    []
   );
 
   // Function to fetch SOL and SPL token balances and metadata
@@ -128,7 +130,7 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8 md:p-12 lg:p-24 text-white bg-gradient-to-br from-gray-900 via-gray-800 to-purple-900">
       <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex flex-col space-y-4">
-        <h1 className="text-3xl sm:text-4xl font-bold mb-2 sm:mb-4 text-center text-purple-400">Solana Cüzdanım</h1>
+        <h1 className="text-3xl sm:text-4xl font-bold mb-2 sm:mb-4 text-center text-purple-400">Solana Cüzdan&#x27;ım</h1>
         <p className="text-base sm:text-lg text-center mb-4 text-gray-300">
           Cüzdanınızı bağlayarak SOL ve SPL token bakiyelerinizi görüntüleyin.
         </p>
@@ -174,7 +176,7 @@ export default function Home() {
                             <li key={token.mintAddress} className="bg-slate-700/50 p-4 rounded-xl flex items-center justify-between space-x-4 border border-gray-600/50">
                                 <div className="flex items-center space-x-3">
                                   {token.icon ? (
-                                      <img src={token.icon} alt={`${token.name} icon`} className="w-12 h-12 rounded-full border-2 border-gray-600" />
+                                      <Image src={token.icon} alt={`${token.name} icon`} width={48} height={48} className="w-12 h-12 rounded-full border-2 border-gray-600" />
                                   ) : (
                                       <div className="w-12 h-12 bg-gray-500 rounded-full flex items-center justify-center text-gray-300">?</div>
                                   )}
