@@ -23,7 +23,8 @@ interface TokenBalance {
   name?: string | null;
   symbol?: string | null;
   icon?: string | null;
-  price?: number | null; // Dolar fiyatı için yeni alan
+  price?: number | null;
+  loadingPrice?: boolean;
 }
 
 interface HeliusAsset {
@@ -45,13 +46,15 @@ export default function Home() {
   const [splTokens, setSplTokens] = useState<TokenBalance[]>([]);
   const [loading, setLoading] = useState(false);
   const [totalWalletValue, setTotalWalletValue] = useState<number | null>(null);
+  const [solPrice, setSolPrice] = useState<number | null>(null);
+  const [loadingSolPrice, setLoadingSolPrice] = useState(false);
 
   const heliusApiKey = "8e2fd160-d29c-452f-bfd5-507192363a1f";
   const connection = new Connection(
     `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
   );
 
-  const fetchData = useCallback(async () => {
+  const fetchBalances = useCallback(async () => {
     if (!publicKey) {
       setSolBalance(null);
       setSplTokens([]);
@@ -61,11 +64,12 @@ export default function Home() {
 
     setLoading(true);
     try {
-      // 1. SOL Bakiyesini Çek
+      // SOL Bakiyesini Çek
       const solAccountBalance = await connection.getBalance(publicKey);
       const sol = solAccountBalance / LAMPORTS_PER_SOL;
+      setSolBalance(sol);
 
-      // 2. SPL Token Bakiyelerini Çek
+      // SPL Token Bakiyelerini Çek
       const filters: GetProgramAccountsFilter[] = [
         { dataSize: 165 },
         { memcmp: { offset: 32, bytes: publicKey.toBase58() } },
@@ -87,7 +91,7 @@ export default function Home() {
       const nonZeroTokens = tokensWithoutMetadata.filter(token => token.amount > 0);
       const mintAddresses = nonZeroTokens.map(token => token.mintAddress);
       
-      // 3. Token Metadata'sını (isim, sembol, ikon) Çek
+      // Token Metadata'sını (isim, sembol, ikon) Çek
       const metadataResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,48 +113,88 @@ export default function Home() {
           name: asset?.content?.metadata?.name || null,
           symbol: asset?.content?.metadata?.symbol || null,
           icon: asset?.content?.links?.image || null,
+          price: null, // Fiyatı başlangıçta null olarak ayarla
+          loadingPrice: false,
         };
       });
-
-      // 4. Fiyatlandırma API'sinden Fiyatları Çek
-      const allMintAddresses = ["So11111111111111111111111111111111111111112", ...mintAddresses];
-      const priceResponse = await fetch(
-        `https://price.jup.ag/v4/price?ids=${allMintAddresses.join('%2C')}`
-      );
-      const priceData = await priceResponse.json();
-      const prices = priceData.data;
-
-      // 5. Toplam Değeri Hesapla ve Token'lara Fiyatları Ekle
-      let totalValue = 0;
-      
-      const solPrice = prices["So11111111111111111111111111111111111111112"]?.price || 0;
-      totalValue += sol * solPrice;
-
-      const updatedSplTokens = tokensWithMetadata.map(token => {
-        const price = prices[token.mintAddress]?.price || 0;
-        totalValue += token.amount * price;
-        return { ...token, price };
-      });
-
-      // 6. Tüm Durumları Tek Seferde Güncelle
-      setSolBalance(sol);
-      setSplTokens(updatedSplTokens);
-      setTotalWalletValue(totalValue);
+      setSplTokens(tokensWithMetadata);
 
     } catch (error) {
       console.error("Veriler alınırken bir hata oluştu: ", error);
       setSolBalance(null);
       setSplTokens([]);
-      setTotalWalletValue(null);
     }
     setLoading(false);
   }, [publicKey, connection]);
 
-  // Cüzdan bağlandığında verileri otomatik olarak çek
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  // SOL fiyatını çeken fonksiyon
+  const fetchSolPrice = useCallback(async () => {
+    setLoadingSolPrice(true);
+    try {
+      const priceResponse = await fetch(
+        `https://price.jup.ag/v4/price?ids=So11111111111111111111111111111111111111112`
+      );
+      const priceData = await priceResponse.json();
+      const price = priceData.data["So11111111111111111111111111111111111111112"]?.price || null;
+      setSolPrice(price);
+    } catch (error) {
+      console.error("SOL fiyatı alınamadı: ", error);
+      setSolPrice(null);
+    }
+    setLoadingSolPrice(false);
+  }, []);
 
+  // Belirli bir token'ın fiyatını çeken fonksiyon
+  const fetchTokenPrice = useCallback(async (mintAddress: string, index: number) => {
+    setSplTokens(currentTokens => {
+        const newTokens = [...currentTokens];
+        newTokens[index].loadingPrice = true;
+        return newTokens;
+    });
+    
+    try {
+      const priceResponse = await fetch(
+        `https://price.jup.ag/v4/price?ids=${mintAddress}`
+      );
+      const priceData = await priceResponse.json();
+      const price = priceData.data[mintAddress]?.price || null;
+      
+      setSplTokens(currentTokens => {
+        const newTokens = [...currentTokens];
+        newTokens[index].price = price;
+        newTokens[index].loadingPrice = false;
+        return newTokens;
+      });
+
+    } catch (error) {
+      console.error(`Fiyat alınamadı ${mintAddress}: `, error);
+      setSplTokens(currentTokens => {
+        const newTokens = [...currentTokens];
+        newTokens[index].price = null;
+        newTokens[index].loadingPrice = false;
+        return newTokens;
+      });
+    }
+  }, []);
+
+  // Toplam cüzdan değerini hesapla
+  useEffect(() => {
+    let total = 0;
+    if (solBalance !== null && solPrice !== null) {
+      total += solBalance * solPrice;
+    }
+    splTokens.forEach(token => {
+      if (token.price !== null) {
+        total += token.amount * token.price;
+      }
+    });
+    setTotalWalletValue(total);
+  }, [solBalance, solPrice, splTokens]);
+
+  // Sayfa yüklendiğinde veya cüzdan değiştiğinde bakiyeleri çek
+  useEffect(() => {
+    fetchBalances();
+  }, [fetchBalances]);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-900 text-white">
@@ -193,34 +237,27 @@ export default function Home() {
               {loading ? (
                 <p className="text-white text-center">Veriler yükleniyor...</p>
               ) : (
-                <p className="text-lg text-center">
-                  <span className="font-semibold text-green-400">SOL:</span>{" "}
-                  {solBalance !== null ? `${solBalance}` : "Bakiye alınamadı"}
-                </p>
-              )}
-            </div>
-
-            <div className="mt-6 text-center">
-              <button
-                onClick={fetchData}
-                className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
-                disabled={loading}
-              >
-                {loading ? "Yükleniyor..." : "Yenile"}
-              </button>
-              
-              <div className="mt-4 text-left">
-                {loading ? (
-                  <p className="text-white text-center">SPL token&apos;lar yükleniyor...</p>
-                ) : (
-                  splTokens.length > 0 ? (
+                <>
+                  <p className="text-lg text-center">
+                    <span className="font-semibold text-green-400">SOL:</span>{" "}
+                    {solBalance !== null ? `${solBalance}` : "Bakiye alınamadı"}
+                    <button
+                      onClick={fetchSolPrice}
+                      className="ml-4 px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors duration-200"
+                      disabled={loadingSolPrice}
+                    >
+                      {loadingSolPrice ? "Yükleniyor..." : solPrice !== null ? `$${solPrice.toFixed(2)}` : "Fiyatı Al"}
+                    </button>
+                  </p>
+                  
+                  {splTokens.length > 0 ? (
                     <div className="mt-4">
                       <h3 className="text-xl font-semibold mb-2">SPL Token&apos;lar:</h3>
                       <ul className="list-none space-y-4">
                         {splTokens
                           .filter(token => token.amount > 0)
                           .map((token, index) => (
-                            <li key={index} className="bg-slate-700 p-4 rounded-xl flex items-center space-x-4">
+                            <li key={token.mintAddress} className="bg-slate-700 p-4 rounded-xl flex items-center space-x-4">
                                 {token.icon ? (
                                     <img src={token.icon} alt={`${token.name} icon`} className="w-12 h-12 rounded-full border-2 border-gray-600" />
                                 ) : (
@@ -242,6 +279,13 @@ export default function Home() {
                                           (${ (token.amount * token.price).toFixed(2) })
                                         </span>
                                       )}
+                                      <button
+                                        onClick={() => fetchTokenPrice(token.mintAddress, index)}
+                                        className="ml-4 px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors duration-200"
+                                        disabled={token.loadingPrice}
+                                      >
+                                        {token.loadingPrice ? "Yükleniyor..." : token.price !== null ? `$${token.price.toFixed(4)}` : "Fiyatı Al"}
+                                      </button>
                                     </p>
                                     <p className="font-mono text-xs text-gray-400 mt-1">
                                       Mint: {token.mintAddress}
@@ -256,7 +300,15 @@ export default function Home() {
                   )
                 )}
               </div>
-            </div>
+            </>
+            )}
+            <button
+                onClick={fetchBalances}
+                className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
+                disabled={loading}
+              >
+                {loading ? "Yükleniyor..." : "Yenile"}
+              </button>
           </div>
         ) : (
           <p className="text-white mt-4 text-center">
