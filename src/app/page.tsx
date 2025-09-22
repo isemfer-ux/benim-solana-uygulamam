@@ -96,39 +96,34 @@ export default function Home() {
       // Filter out tokens with 0 balance
       const nonZeroTokens = tokensWithoutMetadata.filter(token => token.amount > 0);
 
-      // Fetch metadata for all non-zero tokens in one go
+      // Fetch metadata for all non-zero tokens using Helius's Digital Assets API
       const mintAddresses = nonZeroTokens.map(token => token.mintAddress);
+      
       const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "my-id",
-          method: "getMultipleAccounts",
-          params: [
-            mintAddresses,
-            {
-              "encoding": "jsonParsed"
-            }
-          ]
+          jsonrpc: '2.0',
+          id: 'my-id',
+          method: 'getAssetBatch',
+          params: {
+            ids: mintAddresses,
+          },
         }),
       });
+
       const data = await response.json();
-      const mintData = data.result.value;
+      const assets = data.result;
 
-      const tokensWithMetadata = nonZeroTokens.map((token, index) => {
-        const metadata = mintData[index]?.data?.parsed?.info?.mint;
-        const name = metadata?.name || null;
-        const symbol = metadata?.symbol || null;
-        const icon = metadata?.icon || null;
-
+      const tokensWithMetadata = nonZeroTokens.map((token) => {
+        const asset = assets.find((a: any) => a.id === token.mintAddress);
         return {
           ...token,
-          name: name,
-          symbol: symbol,
-          icon: icon,
+          name: asset?.content?.metadata?.name || null,
+          symbol: asset?.content?.metadata?.symbol || null,
+          icon: asset?.content?.links?.image || null,
         };
       });
 
