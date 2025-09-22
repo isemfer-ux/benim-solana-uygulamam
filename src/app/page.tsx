@@ -12,6 +12,7 @@ import {
 } from "@solana/web3.js";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
+// Dynamic import for the wallet button to prevent SSR issues
 const WalletMultiButtonDynamic = dynamic(
   async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
   { ssr: false }
@@ -44,7 +45,7 @@ export default function Home() {
   const { publicKey } = useWallet();
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [splTokens, setSplTokens] = useState<TokenBalance[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loadingBalances, setLoadingBalances] = useState(false);
   const [totalWalletValue, setTotalWalletValue] = useState<number | null>(null);
   const [solPrice, setSolPrice] = useState<number | null>(null);
   const [loadingSolPrice, setLoadingSolPrice] = useState(false);
@@ -54,22 +55,22 @@ export default function Home() {
     `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
   );
 
+  // Function to fetch SOL and SPL token balances and metadata
   const fetchBalances = useCallback(async () => {
     if (!publicKey) {
       setSolBalance(null);
       setSplTokens([]);
       setTotalWalletValue(null);
+      setSolPrice(null); // Reset price as well
       return;
     }
 
-    setLoading(true);
+    setLoadingBalances(true);
     try {
-      // SOL Bakiyesini Çek
       const solAccountBalance = await connection.getBalance(publicKey);
       const sol = solAccountBalance / LAMPORTS_PER_SOL;
       setSolBalance(sol);
 
-      // SPL Token Bakiyelerini Çek
       const filters: GetProgramAccountsFilter[] = [
         { dataSize: 165 },
         { memcmp: { offset: 32, bytes: publicKey.toBase58() } },
@@ -91,7 +92,6 @@ export default function Home() {
       const nonZeroTokens = tokensWithoutMetadata.filter(token => token.amount > 0);
       const mintAddresses = nonZeroTokens.map(token => token.mintAddress);
       
-      // Token Metadata'sını (isim, sembol, ikon) Çek
       const metadataResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -113,7 +113,7 @@ export default function Home() {
           name: asset?.content?.metadata?.name || null,
           symbol: asset?.content?.metadata?.symbol || null,
           icon: asset?.content?.links?.image || null,
-          price: null, // Fiyatı başlangıçta null olarak ayarla
+          price: null,
           loadingPrice: false,
         };
       });
@@ -124,10 +124,10 @@ export default function Home() {
       setSolBalance(null);
       setSplTokens([]);
     }
-    setLoading(false);
+    setLoadingBalances(false);
   }, [publicKey, connection]);
 
-  // SOL fiyatını çeken fonksiyon
+  // Function to fetch the price of SOL
   const fetchSolPrice = useCallback(async () => {
     setLoadingSolPrice(true);
     try {
@@ -144,7 +144,7 @@ export default function Home() {
     setLoadingSolPrice(false);
   }, []);
 
-  // Belirli bir token'ın fiyatını çeken fonksiyon
+  // Function to fetch the price of a specific token
   const fetchTokenPrice = useCallback(async (mintAddress: string, index: number) => {
     setSplTokens(currentTokens => {
         const newTokens = [...currentTokens];
@@ -177,7 +177,7 @@ export default function Home() {
     }
   }, []);
 
-  // Toplam cüzdan değerini hesapla
+  // Recalculate total wallet value whenever balances or prices change
   useEffect(() => {
     let total = 0;
     if (solBalance !== null && solPrice !== null) {
@@ -191,26 +191,26 @@ export default function Home() {
     setTotalWalletValue(total);
   }, [solBalance, solPrice, splTokens]);
 
-  // Sayfa yüklendiğinde veya cüzdan değiştiğinde bakiyeleri çek
+  // Fetch balances on initial page load or when the wallet changes
   useEffect(() => {
     fetchBalances();
   }, [fetchBalances]);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-900 text-white">
+    <main className="flex min-h-screen flex-col items-center justify-center p-4 sm:p-8 md:p-12 lg:p-24 bg-gray-900 text-white">
       <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex flex-col space-y-4">
-        <h1 className="text-4xl font-bold mb-4">Solana Cüzdan Bağlama</h1>
-        <p className="text-lg text-center">
-          Cüzdanınızı bağlayarak SOL ve SPL token bakiyelerinizi görün.
+        <h1 className="text-3xl sm:text-4xl font-bold mb-2 sm:mb-4 text-center">Solana Cüzdan</h1>
+        <p className="text-base sm:text-lg text-center mb-4">
+          Cüzdanınızı bağlayarak SOL ve SPL token bakiyelerinizi görüntüleyin.
         </p>
 
-        <div className="p-4 bg-slate-800 rounded-xl shadow-lg mt-4">
+        <div className="p-4 bg-slate-800 rounded-xl shadow-lg mt-4 w-full text-center">
           <WalletMultiButtonDynamic />
         </div>
 
         {publicKey ? (
-          <div className="p-6 bg-slate-800 rounded-xl shadow-lg mt-4 w-full text-center">
-            <p className="text-lg text-white">
+          <div className="p-6 bg-slate-800 rounded-xl shadow-lg mt-4 w-full">
+            <p className="text-sm sm:text-lg text-white mb-4 break-all text-center">
               Bağlı Cüzdan:{" "}
               <span className="font-semibold text-green-400">
                 {publicKey.toBase58()}
@@ -219,10 +219,10 @@ export default function Home() {
             
             {totalWalletValue !== null ? (
               <div className="mt-4 text-center">
-                <h2 className="text-3xl font-bold text-green-500">
-                  Toplam Cüzdan Değeri:
+                <h2 className="text-xl sm:text-3xl font-bold text-green-500">
+                  Toplam Cüzdan Değeri
                 </h2>
-                <p className="text-4xl mt-1">
+                <p className="text-3xl sm:text-4xl mt-1">
                   ${totalWalletValue.toFixed(2)}
                 </p>
               </div>
@@ -233,64 +233,70 @@ export default function Home() {
             )}
 
             <div className="mt-6 text-left">
-              <h2 className="text-2xl font-bold mb-2 text-center">Bakiyeler</h2>
-              {loading ? (
-                <p className="text-white text-center">Veriler yükleniyor...</p>
+              <h2 className="text-xl sm:text-2xl font-bold mb-4 text-center">Bakiyeler</h2>
+              {loadingBalances ? (
+                <p className="text-white text-center">Bakiyeler yükleniyor...</p>
               ) : (
                 <>
-                  <p className="text-lg text-center">
-                    <span className="font-semibold text-green-400">SOL:</span>{" "}
-                    {solBalance !== null ? `${solBalance}` : "Bakiye alınamadı"}
+                  {/* SOL Balance */}
+                  <div className="bg-slate-700 p-4 rounded-xl flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 rounded-full bg-yellow-400 flex items-center justify-center font-bold text-black text-2xl">S</div>
+                      <div>
+                        <h4 className="text-lg sm:text-xl font-bold text-white">Solana (SOL)</h4>
+                        <p className="font-bold text-lg text-purple-400">{solBalance !== null ? `${solBalance.toFixed(6)}` : "Bakiye alınamadı"}</p>
+                      </div>
+                    </div>
                     <button
                       onClick={fetchSolPrice}
-                      className="ml-4 px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors duration-200"
+                      className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors duration-200"
                       disabled={loadingSolPrice}
                     >
                       {loadingSolPrice ? "Yükleniyor..." : solPrice !== null ? `$${solPrice.toFixed(2)}` : "Fiyatı Al"}
                     </button>
-                  </p>
+                  </div>
                   
+                  {/* SPL Tokens */}
                   {splTokens.length > 0 ? (
                     <div className="mt-4">
-                      <h3 className="text-xl font-semibold mb-2">SPL Token&apos;lar:</h3>
+                      <h3 className="text-lg sm:text-xl font-semibold mb-2">SPL Token&apos;lar</h3>
                       <ul className="list-none space-y-4">
                         {splTokens
                           .filter(token => token.amount > 0)
                           .map((token, index) => (
-                            <li key={token.mintAddress} className="bg-slate-700 p-4 rounded-xl flex items-center space-x-4">
-                                {token.icon ? (
-                                    <img src={token.icon} alt={`${token.name} icon`} className="w-12 h-12 rounded-full border-2 border-gray-600" />
-                                ) : (
-                                    <div className="w-12 h-12 bg-gray-500 rounded-full flex items-center justify-center text-gray-300">?</div>
-                                )}
-                                <div className="flex-1">
-                                    <h4 className="text-xl font-bold text-white">
-                                        {token.name || "Bilinmeyen Token"} 
-                                        {token.symbol && (
-                                          <span className="ml-2 text-sm text-gray-400 font-normal">
-                                            ({token.symbol})
+                            <li key={token.mintAddress} className="bg-slate-700 p-4 rounded-xl flex items-center justify-between space-x-4">
+                                <div className="flex items-center space-x-3">
+                                  {token.icon ? (
+                                      <img src={token.icon} alt={`${token.name} icon`} className="w-12 h-12 rounded-full border-2 border-gray-600" />
+                                  ) : (
+                                      <div className="w-12 h-12 bg-gray-500 rounded-full flex items-center justify-center text-gray-300">?</div>
+                                  )}
+                                  <div>
+                                      <h4 className="text-lg sm:text-xl font-bold text-white">
+                                          {token.name || "Bilinmeyen Token"} 
+                                          {token.symbol && (
+                                            <span className="ml-2 text-sm text-gray-400 font-normal">
+                                              ({token.symbol})
+                                            </span>
+                                          )}
+                                      </h4>
+                                      <p className="font-bold text-lg text-purple-400">
+                                        {token.amount.toFixed(4)}
+                                        {token.price !== null && token.price !== undefined && token.price > 0 && (
+                                          <span className="ml-2 text-sm text-green-400 font-normal">
+                                            (${ (token.amount * token.price).toFixed(2) })
                                           </span>
                                         )}
-                                    </h4>
-                                    <p className="font-bold text-lg text-purple-400">
-                                      {token.amount}
-                                      {token.price !== null && token.price !== undefined && token.price > 0 && (
-                                        <span className="ml-2 text-sm text-green-400 font-normal">
-                                          (${ (token.amount * token.price).toFixed(2) })
-                                        </span>
-                                      )}
-                                      <button
-                                        onClick={() => fetchTokenPrice(token.mintAddress, index)}
-                                        className="ml-4 px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors duration-200"
-                                        disabled={token.loadingPrice}
-                                      >
-                                        {token.loadingPrice ? "Yükleniyor..." : token.price !== null ? `$${token.price.toFixed(4)}` : "Fiyatı Al"}
-                                      </button>
-                                    </p>
-                                    <p className="font-mono text-xs text-gray-400 mt-1">
-                                      Mint: {token.mintAddress}
-                                    </p>
+                                      </p>
+                                  </div>
                                 </div>
+                                <button
+                                  onClick={() => fetchTokenPrice(token.mintAddress, index)}
+                                  className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors duration-200"
+                                  disabled={token.loadingPrice}
+                                >
+                                  {token.loadingPrice ? "Yükleniyor..." : token.price !== null ? `$${token.price.toFixed(4)}` : "Fiyatı Al"}
+                                </button>
                             </li>
                           ))}
                       </ul>
@@ -302,13 +308,15 @@ export default function Home() {
               </div>
             </>
             )}
-            <button
-                onClick={fetchBalances}
-                className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
-                disabled={loading}
-              >
-                {loading ? "Yükleniyor..." : "Yenile"}
-              </button>
+            <div className="text-center mt-6">
+              <button
+                  onClick={fetchBalances}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
+                  disabled={loadingBalances}
+                >
+                  {loadingBalances ? "Yükleniyor..." : "Bakiyeleri Yenile"}
+                </button>
+            </div>
           </div>
         ) : (
           <p className="text-white mt-4 text-center">
