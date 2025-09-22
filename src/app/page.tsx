@@ -51,23 +51,30 @@ export default function Home() {
     `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
   );
 
-  // Tüm verileri tek bir fonksiyonda çeken ve işleyen metod
-  const fetchData = useCallback(async () => {
+  // SOL bakiyesini çeken fonksiyon
+  const fetchSolBalance = useCallback(async () => {
     if (!publicKey) {
       setSolBalance(null);
-      setSplTokens([]);
-      setTotalWalletValue(null);
       return;
     }
-
-    setLoading(true);
     try {
-      // 1. SOL Bakiyesini Çek
-      const solAccountBalance = await connection.getBalance(publicKey);
-      const sol = solAccountBalance / LAMPORTS_PER_SOL;
-      setSolBalance(sol);
+      const accountBalance = await connection.getBalance(publicKey);
+      setSolBalance(accountBalance / LAMPORTS_PER_SOL);
+    } catch (error) {
+      console.error(
+        "SOL bakiyesi alınamadı " + publicKey + ": " + error
+      );
+      setSolBalance(null);
+    }
+  }, [publicKey, connection]);
 
-      // 2. SPL Token Bakiyelerini Çek
+  // SPL tokenlarını ve metadata'sını çeken fonksiyon
+  const fetchSplTokens = useCallback(async () => {
+    if (!publicKey) {
+      setSplTokens([]);
+      return;
+    }
+    try {
       const filters: GetProgramAccountsFilter[] = [
         { dataSize: 165 },
         { memcmp: { offset: 32, bytes: publicKey.toBase58() } },
@@ -89,8 +96,7 @@ export default function Home() {
       const nonZeroTokens = tokensWithoutMetadata.filter(token => token.amount > 0);
       const mintAddresses = nonZeroTokens.map(token => token.mintAddress);
       
-      // 3. Token Metadata'sını (isim, sembol, ikon) Çek
-      const metadataResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
+      const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -101,8 +107,8 @@ export default function Home() {
         }),
       });
 
-      const metadataData = await metadataResponse.json();
-      const assets: HeliusAsset[] = metadataData.result;
+      const data = await response.json();
+      const assets: HeliusAsset[] = data.result;
 
       const tokensWithMetadata = nonZeroTokens.map((token) => {
         const asset = assets.find((a: HeliusAsset) => a.id === token.mintAddress);
@@ -113,43 +119,68 @@ export default function Home() {
           icon: asset?.content?.links?.image || null,
         };
       });
+      setSplTokens(tokensWithMetadata);
+    } catch (error) {
+      console.error(
+        "SPL bakiyeleri alınamadı " + publicKey.toBase58() + ": " + error
+      );
+      setSplTokens([]);
+    }
+  }, [publicKey, connection]);
 
-      // 4. Fiyatlandırma API'sinden Fiyatları Çek
-      const allMintAddresses = ["So11111111111111111111111111111111111111112", ...mintAddresses];
+  // Fiyatları çeken ve toplam değeri hesaplayan fonksiyon
+  const fetchPricesAndCalculateTotal = useCallback(async (sol: number | null, tokens: TokenBalance[]) => {
+    if (!sol && tokens.length === 0) {
+      setTotalWalletValue(null);
+      return;
+    }
+
+    const allMintAddresses = ["So11111111111111111111111111111111111111112", ...tokens.map(t => t.mintAddress)];
+    
+    try {
       const priceResponse = await fetch(
         `https://price.jup.ag/v4/price?ids=${allMintAddresses.join('%2C')}`
       );
       const priceData = await priceResponse.json();
       const prices = priceData.data;
 
-      // 5. Toplam Değeri Hesapla ve Token'lara Fiyatları Ekle
       let totalValue = 0;
+      
       const solPrice = prices["So11111111111111111111111111111111111111112"]?.price || 0;
-      totalValue += sol * solPrice;
+      if (sol !== null) {
+        totalValue += sol * solPrice;
+      }
 
-      const updatedSplTokens = tokensWithMetadata.map(token => {
+      const updatedSplTokens = tokens.map(token => {
         const price = prices[token.mintAddress]?.price || 0;
         totalValue += token.amount * price;
         return { ...token, price };
       });
 
-      // 6. Durumları Tek Seferde Güncelle
       setSplTokens(updatedSplTokens);
       setTotalWalletValue(totalValue);
-
     } catch (error) {
-      console.error("Veriler alınırken bir hata oluştu: ", error);
-      setSolBalance(null);
-      setSplTokens([]);
+      console.error("Fiyatlar alınamadı: ", error);
       setTotalWalletValue(null);
     }
-    setLoading(false);
-  }, [publicKey, connection]);
+  }, []);
 
-  // Cüzdan bağlandığında verileri otomatik olarak çek
+  // Ana veri çekme akışı
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (publicKey) {
+      setLoading(true);
+      Promise.all([fetchSolBalance(), fetchSplTokens()]).finally(() => {
+        setLoading(false);
+      });
+    }
+  }, [publicKey, fetchSolBalance, fetchSplTokens]);
+
+  // Bakiyeler geldiğinde fiyatları çek ve toplamı hesapla
+  useEffect(() => {
+    if (publicKey) {
+      fetchPricesAndCalculateTotal(solBalance, splTokens);
+    }
+  }, [publicKey, solBalance, splTokens, fetchPricesAndCalculateTotal]);
 
 
   return (
@@ -202,7 +233,12 @@ export default function Home() {
 
             <div className="mt-6 text-center">
               <button
-                onClick={fetchData}
+                onClick={() => {
+                  setLoading(true);
+                  Promise.all([fetchSolBalance(), fetchSplTokens()]).finally(() => {
+                    setLoading(false);
+                  });
+                }}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
                 disabled={loading}
               >
