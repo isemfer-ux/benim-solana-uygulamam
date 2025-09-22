@@ -23,9 +23,9 @@ interface TokenBalance {
   name?: string | null;
   symbol?: string | null;
   icon?: string | null;
+  price?: number | null; // Dolar fiyatı için yeni alan
 }
 
-// Helius Digital Assets API'sinden gelen veri için yeni interface
 interface HeliusAsset {
   id: string;
   content: {
@@ -45,6 +45,12 @@ export default function Home() {
   const [splTokens, setSplTokens] = useState<TokenBalance[]>([]);
   const [loading, setLoading] = useState(false);
   const [splLoading, setSplLoading] = useState(false);
+  const [totalWalletValue, setTotalWalletValue] = useState<number | null>(null);
+
+  const heliusApiKey = "8e2fd160-d29c-452f-bfd5-507192363a1f";
+  const connection = new Connection(
+    `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
+  );
 
   const fetchSolBalance = useCallback(async () => {
     if (!publicKey) {
@@ -54,20 +60,16 @@ export default function Home() {
 
     setLoading(true);
     try {
-      const heliusApiKey = "8e2fd160-d29c-452f-bfd5-507192363a1f";
-      const connection = new Connection(
-        `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
-      );
       const accountBalance = await connection.getBalance(publicKey);
       setSolBalance(accountBalance / LAMPORTS_PER_SOL);
     } catch (error) {
       console.error(
-        "failed to get SOL balance for account " + publicKey + ": " + error
+        "SOL bakiyesi alınamadı " + publicKey + ": " + error
       );
       setSolBalance(null);
     }
     setLoading(false);
-  }, [publicKey]);
+  }, [publicKey, connection]);
 
   const fetchSplTokens = useCallback(async () => {
     if (!publicKey) {
@@ -77,21 +79,9 @@ export default function Home() {
 
     setSplLoading(true);
     try {
-      const heliusApiKey = "8e2fd160-d29c-452f-bfd5-507192363a1f";
-      const connection = new Connection(
-        `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
-      );
-      
       const filters: GetProgramAccountsFilter[] = [
-        {
-          dataSize: 165,
-        },
-        {
-          memcmp: {
-            offset: 32,
-            bytes: publicKey.toBase58(),
-          },
-        },
+        { dataSize: 165 },
+        { memcmp: { offset: 32, bytes: publicKey.toBase58() } },
       ];
 
       const tokenAccounts = await connection.getParsedProgramAccounts(
@@ -107,24 +97,17 @@ export default function Home() {
         };
       });
 
-      // Filter out tokens with 0 balance
       const nonZeroTokens = tokensWithoutMetadata.filter(token => token.amount > 0);
-
-      // Fetch metadata for all non-zero tokens using Helius's Digital Assets API
       const mintAddresses = nonZeroTokens.map(token => token.mintAddress);
       
       const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 'my-id',
           method: 'getAssetBatch',
-          params: {
-            ids: mintAddresses,
-          },
+          params: { ids: mintAddresses },
         }),
       });
 
@@ -140,29 +123,71 @@ export default function Home() {
           icon: asset?.content?.links?.image || null,
         };
       });
-
       setSplTokens(tokensWithMetadata);
     } catch (error) {
       console.error(
-        "failed to get SPL balances for account " + publicKey.toBase58() + ": " + error
+        "SPL bakiyeleri alınamadı " + publicKey.toBase58() + ": " + error
       );
       setSplTokens([]);
     }
     setSplLoading(false);
-  }, [publicKey]);
+  }, [publicKey, connection]);
+
+  const fetchPricesAndCalculateTotal = useCallback(async () => {
+    if (splTokens.length === 0 && solBalance === null) return;
+    
+    // SOL'un fiyatını da Jupiter API'sinden çekelim
+    const allMintAddresses = ["So11111111111111111111111111111111111111112"];
+    splTokens.forEach(token => {
+      if (token.mintAddress) {
+        allMintAddresses.push(token.mintAddress);
+      }
+    });
+
+    try {
+      const response = await fetch(
+        `https://price.jup.ag/v4/price?ids=${allMintAddresses.join('%2C')}`
+      );
+      const data = await response.json();
+      const prices = data.data;
+
+      let totalValue = 0;
+
+      // SOL fiyatını al ve değere ekle
+      const solPrice = prices["So11111111111111111111111111111111111111112"]?.price || 0;
+      if (solBalance !== null) {
+        totalValue += solBalance * solPrice;
+      }
+
+      // Her bir SPL token'ın fiyatını al ve değere ekle
+      const updatedSplTokens = splTokens.map(token => {
+        const price = prices[token.mintAddress]?.price || 0;
+        totalValue += token.amount * price;
+        return { ...token, price };
+      });
+
+      setSplTokens(updatedSplTokens);
+      setTotalWalletValue(totalValue);
+    } catch (error) {
+      console.error("Fiyatlar alınamadı: ", error);
+      setTotalWalletValue(null);
+    }
+  }, [splTokens, solBalance]);
 
   useEffect(() => {
     if (publicKey) {
       fetchSolBalance();
-    }
-  }, [fetchSolBalance, publicKey]);
-  
-  // NOTE: This effect is for fetching SPL tokens only after the wallet is connected
-  useEffect(() => {
-    if (publicKey) {
       fetchSplTokens();
     }
-  }, [fetchSplTokens, publicKey]);
+  }, [fetchSolBalance, fetchSplTokens, publicKey]);
+
+  useEffect(() => {
+    // Hem SOL hem de SPL token'lar geldikten sonra fiyatları çek
+    if ((splTokens.length > 0 || solBalance !== null) && !loading && !splLoading) {
+      fetchPricesAndCalculateTotal();
+    }
+  }, [solBalance, splTokens, loading, splLoading, fetchPricesAndCalculateTotal]);
+
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-900 text-white">
@@ -184,6 +209,22 @@ export default function Home() {
                 {publicKey.toBase58()}
               </span>
             </p>
+            
+            {totalWalletValue !== null ? (
+              <div className="mt-4 text-center">
+                <h2 className="text-3xl font-bold text-green-500">
+                  Toplam Cüzdan Değeri:
+                </h2>
+                <p className="text-4xl mt-1">
+                  ${totalWalletValue.toFixed(2)}
+                </p>
+              </div>
+            ) : (
+              <p className="text-gray-400 mt-4 text-center">
+                Toplam cüzdan değeri hesaplanıyor...
+              </p>
+            )}
+
             <div className="mt-6 text-left">
               <h2 className="text-2xl font-bold mb-2 text-center">Bakiyeler</h2>
               {loading ? (
@@ -202,7 +243,7 @@ export default function Home() {
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors duration-200"
                 disabled={splLoading}
               >
-                {splLoading ? "Yükleniyor..." : "SPL Token'ları Getir"}
+                {splLoading ? "Yükleniyor..." : "SPL Token'ları Yenile"}
               </button>
               
               <div className="mt-4 text-left">
@@ -233,6 +274,11 @@ export default function Home() {
                                     </h4>
                                     <p className="font-bold text-lg text-purple-400">
                                       {token.amount}
+                                      {token.price !== null && token.price !== undefined && token.price > 0 && (
+                                        <span className="ml-2 text-sm text-green-400 font-normal">
+                                          (${ (token.amount * token.price).toFixed(2) })
+                                        </span>
+                                      )}
                                     </p>
                                     <p className="font-mono text-xs text-gray-400 mt-1">
                                       Mint: {token.mintAddress}
