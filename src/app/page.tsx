@@ -303,11 +303,10 @@ export default function Home() {
                     </div>
                   ) : (
                     <p className="text-gray-400 mt-4 text-center">Hiç SPL token bakiyesi bulunamadı.</p>
-                  )
-                )}
-              </div>
-            </>
-            )}
+                  )}
+                </>
+              )}
+            </div>
             <div className="text-center mt-6">
               <button
                   onClick={fetchBalances}
