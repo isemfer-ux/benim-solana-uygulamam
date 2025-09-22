@@ -25,6 +25,20 @@ interface TokenBalance {
   icon?: string;
 }
 
+// Helius Digital Assets API'sinden gelen veri için yeni interface
+interface HeliusAsset {
+  id: string;
+  content: {
+    metadata: {
+      name: string;
+      symbol: string;
+    };
+    links: {
+      image: string;
+    };
+  };
+}
+
 export default function Home() {
   const { publicKey } = useWallet();
   const [solBalance, setSolBalance] = useState<number | null>(null);
@@ -115,10 +129,10 @@ export default function Home() {
       });
 
       const data = await response.json();
-      const assets = data.result;
+      const assets: HeliusAsset[] = data.result;
 
       const tokensWithMetadata = nonZeroTokens.map((token) => {
-        const asset = assets.find((a: any) => a.id === token.mintAddress);
+        const asset = assets.find((a: HeliusAsset) => a.id === token.mintAddress);
         return {
           ...token,
           name: asset?.content?.metadata?.name || null,
